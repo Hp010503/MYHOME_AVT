@@ -1,0 +1,55 @@
+<!DOCTYPE html>
+<html lang="vi">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Tạo Avatar với Khung</title>
+<link rel="stylesheet" href="style.css">
+</head>
+<body>
+<div class="container">
+<h1>Tạo Avatar của bạn</h1>
+<p>Sử dụng các thanh trượt để điều chỉnh vị trí và độ phóng to.</p>
+<!-- Bố cục trình chỉnh sửa chính -->
+    <div class="editor-layout">
+        <div class="main-editor">
+            <!-- VỊ TRÍ SỬA: Thêm loading overlay và aria-label -->
+            <!-- MỤC ĐÍCH: Hiển thị chỉ báo tải và cải thiện accessibility. -->
+            <div id="loading-overlay" role="status">
+                <div class="spinner"></div>
+                <p>Đang xử lý...</p>
+            </div>
+            <canvas id="avatarCanvas" width="2000" height="2000" aria-label="Vùng xem trước và chỉnh sửa avatar"></canvas>
+            <input type="range" id="xSlider" min="-100" max="100" value="0" step="1" disabled aria-label="Điều chỉnh vị trí ảnh theo chiều ngang">
+        </div>
+        <div class="vertical-slider-container">
+            <input type="range" id="ySlider" min="-100" max="100" value="0" step="1" disabled aria-label="Điều chỉnh vị trí ảnh theo chiều dọc">
+        </div>
+    </div>
+
+    <!-- Bảng điều khiển -->
+    <div class="controls">
+        <div class="slider-group">
+            <label for="zoomSlider">Phóng to</label>
+            <input type="range" id="zoomSlider" min="1" max="3" value="1" step="0.01" aria-label="Điều chỉnh độ phóng to của ảnh">
+        </div>
+        
+        <input type="file" id="imageLoader" name="imageLoader" accept="image/*"/>
+        <label for="imageLoader" class="button">Chọn ảnh</label>
+
+        <button id="mainDownloadButton" class="button">Tải xuống & Lưu vào lịch sử</button>
+    </div>
+
+    <!-- Khu vực lịch sử -->
+    <div class="history-section">
+        <h2>Lịch sử đã tạo</h2>
+        <p id="no-history-message">Chưa có avatar nào được lưu.</p>
+        <div id="history-grid">
+            <!-- Các avatar đã tạo sẽ được chèn vào đây bằng JavaScript -->
+        </div>
+    </div>
+</div>
+
+<script src="script.js"></script>
+</body>
+</html>
