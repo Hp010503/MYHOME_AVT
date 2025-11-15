@@ -35,13 +35,9 @@ p { color: #666; margin-bottom: 25px; }
     display: flex;
     flex-direction: column;
     align-items: center;
-    /* VỊ TRÍ SỬA: Thêm position: relative */
-    /* MỤC ĐÍCH: Làm mốc định vị cho loading overlay. */
     position: relative;
 }
 
-/* VỊ TRÍ SỬA: Thêm các style cho loading overlay */
-/* MỤC ĐÍCH: Tạo giao diện cho chỉ báo tải. */
 #loading-overlay {
     position: absolute;
     top: 0;
@@ -49,7 +45,7 @@ p { color: #666; margin-bottom: 25px; }
     right: 0;
     bottom: 0;
     background-color: rgba(255, 255, 255, 0.8);
-    display: none; /* Ẩn mặc định */
+    display: none;
     flex-direction: column;
     justify-content: center;
     align-items: center;
@@ -72,7 +68,6 @@ p { color: #666; margin-bottom: 25px; }
     0% { transform: rotate(0deg); }
     100% { transform: rotate(360deg); }
 }
-
 
 #avatarCanvas {
     width: 100%;
@@ -190,6 +185,7 @@ button.button:hover { background-color: #0056b3; }
     display: block;
     width: 100%;
     height: auto;
+    cursor: pointer; 
 }
 
 .history-download-btn {
@@ -207,4 +203,49 @@ button.button:hover { background-color: #0056b3; }
 
 .history-download-btn:hover {
     background-color: rgba(0, 0, 0, 0.8);
+}
+
+/* Pop-up (Modal) */
+.modal {
+    position: fixed; 
+    z-index: 1000;
+    left: 0;
+    top: 0;
+    width: 100%;
+    height: 100%;
+    overflow: auto; 
+    background-color: rgba(0, 0, 0, 0.85);
+    padding: 20px;
+    box-sizing: border-box;
+    /* VỊ TRÍ SỬA: Hợp nhất và sử dụng display flex */
+    /* MỤC ĐÍCH: Đảm bảo modal được ẩn và căn giữa đúng cách khi hiển thị. */
+    display: none;
+    align-items: center;
+    justify-content: center;
+}
+
+.modal-content {
+    display: block;
+    margin: auto;
+    max-width: 90%;
+    max-height: 90vh;
+    border-radius: 8px;
+}
+
+.modal-close-button {
+    position: absolute;
+    top: 15px;
+    right: 35px;
+    color: #f1f1f1;
+    font-size: 40px;
+    font-weight: bold;
+    transition: 0.3s;
+    cursor: pointer;
+    line-height: 1;
+}
+
+.modal-close-button:hover,
+.modal-close-button:focus {
+    color: #bbb;
+    text-decoration: none;
 }

@@ -13,8 +13,6 @@
 <!-- Bố cục trình chỉnh sửa chính -->
     <div class="editor-layout">
         <div class="main-editor">
-            <!-- VỊ TRÍ SỬA: Thêm loading overlay và aria-label -->
-            <!-- MỤC ĐÍCH: Hiển thị chỉ báo tải và cải thiện accessibility. -->
             <div id="loading-overlay" role="status">
                 <div class="spinner"></div>
                 <p>Đang xử lý...</p>
@@ -48,6 +46,13 @@
             <!-- Các avatar đã tạo sẽ được chèn vào đây bằng JavaScript -->
         </div>
     </div>
+</div>
+
+<!-- VỊ TRÍ SỬA: Thêm cấu trúc HTML cho Pop-up (Modal) -->
+<!-- MỤC ĐÍCH: Dùng để hiển thị ảnh lịch sử khi người dùng nhấp vào. -->
+<div id="history-modal" class="modal">
+    <span class="modal-close-button">&times;</span>
+    <img class="modal-content" id="modal-image" alt="Xem trước ảnh lịch sử">
 </div>
 
 <script src="script.js"></script>

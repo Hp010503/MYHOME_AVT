@@ -9,9 +9,14 @@ const ySlider = document.getElementById('ySlider');
 const historyGrid = document.getElementById('history-grid');
 const noHistoryMessage = document.getElementById('no-history-message');
 const loadingOverlay = document.getElementById('loading-overlay');
+const historyModal = document.getElementById('history-modal');
+const modalImage = document.getElementById('modal-image');
+const closeModalButton = document.querySelector('.modal-close-button');
 
-// Hằng số cho localStorage và ảnh thu nhỏ (Thumbnail)
-const HISTORY_KEY = 'avatarHistory';
+// Hằng số cho IndexedDB và Lịch sử
+const DB_NAME = 'AvatarDB';
+const DB_VERSION = 1;
+const STORE_NAME = 'avatars';
 const MAX_HISTORY_ITEMS = 12; 
 const THUMBNAIL_SIZE = 200; 
 
@@ -29,7 +34,8 @@ let userImage = null;
 let imageScale = 1;
 let imageX = 0;
 let imageY = 0;
-let needsRedraw = false; // Cờ để tối ưu hóa việc vẽ lại
+let needsRedraw = false;
+let dbInstance = null; // Biến để giữ kết nối tới DB
 
 // Tải các ảnh nền và khung mặc định
 const backgroundImage = new Image();
@@ -37,14 +43,74 @@ backgroundImage.src = 'images/background.jpg';
 const frameImage = new Image();
 frameImage.src = 'images/frame.png';
 
+// VỊ TRÍ SỬA: Toàn bộ hệ thống lưu trữ được thay thế bằng IndexedDB Wrapper
+// MỤC ĐÍCH: Cung cấp một phương thức lưu trữ bền vững, dung lượng lớn cho ảnh chất lượng cao.
+const db = {
+    init() {
+        return new Promise((resolve, reject) => {
+            const request = indexedDB.open(DB_NAME, DB_VERSION);
+            request.onerror = () => reject("Lỗi khi mở IndexedDB.");
+            request.onsuccess = (event) => {
+                dbInstance = event.target.result;
+                resolve(dbInstance);
+            };
+            request.onupgradeneeded = (event) => {
+                const db = event.target.result;
+                if (!db.objectStoreNames.contains(STORE_NAME)) {
+                    db.createObjectStore(STORE_NAME, { keyPath: 'id', autoIncrement: true });
+                }
+            };
+        });
+    },
+
+    async saveAvatar(avatar) {
+        if (!dbInstance) await this.init();
+        const transaction = dbInstance.transaction(STORE_NAME, 'readwrite');
+        const store = transaction.objectStore(STORE_NAME);
+        
+        // Thêm avatar mới
+        store.add({ ...avatar, timestamp: Date.now() });
+
+        // Đảm bảo không vượt quá giới hạn lịch sử
+        const keys = await new Promise(resolve => {
+            const allKeysRequest = store.getAllKeys();
+            allKeysRequest.onsuccess = () => resolve(allKeysRequest.result);
+        });
+
+        if (keys.length > MAX_HISTORY_ITEMS) {
+            const items = await new Promise(resolve => {
+                const allItemsRequest = store.getAll();
+                allItemsRequest.onsuccess = () => resolve(allItemsRequest.result);
+            });
+            // Sắp xếp để tìm mục cũ nhất
+            items.sort((a, b) => a.timestamp - b.timestamp);
+            store.delete(items[0].id);
+        }
+
+        return new Promise(resolve => transaction.oncomplete = resolve);
+    },
+
+    async getAvatars() {
+        if (!dbInstance) await this.init();
+        return new Promise((resolve, reject) => {
+            const transaction = dbInstance.transaction(STORE_NAME, 'readonly');
+            const store = transaction.objectStore(STORE_NAME);
+            const request = store.getAll();
+            request.onerror = () => reject("Không thể lấy dữ liệu avatars.");
+            request.onsuccess = () => {
+                // Sắp xếp theo timestamp giảm dần (mới nhất trước)
+                resolve(request.result.sort((a, b) => b.timestamp - a.timestamp));
+            };
+        });
+    }
+};
+
+
 // Hàm tiện ích để giới hạn một giá trị trong một khoảng min-max
 const clamp = (value, min, max) => Math.max(min, Math.min(value, max));
 
 // --- CÁC HÀM XỬ LÝ CANVAS VÀ SLIDER ---
 
-/**
- * Vẽ tất cả các lớp (nền, ảnh người dùng, khung) lên canvas chính.
- */
 const drawCanvas = () => {
     ctx.clearRect(0, 0, CANVAS_WIDTH, CANVAS_HEIGHT);
     ctx.drawImage(backgroundImage, 0, 0, CANVAS_WIDTH, CANVAS_HEIGHT);
@@ -62,9 +128,6 @@ const drawCanvas = () => {
     ctx.drawImage(frameImage, 0, 0, CANVAS_WIDTH, CANVAS_HEIGHT);
 };
 
-/**
- * Vòng lặp cập nhật để tối ưu hiệu suất vẽ.
- */
 const updateLoop = () => {
     if (needsRedraw) {
         drawCanvas();
@@ -73,26 +136,19 @@ const updateLoop = () => {
     requestAnimationFrame(updateLoop);
 };
 
-/**
- * Yêu cầu vẽ lại canvas vào khung hình tiếp theo.
- */
 const requestRedraw = () => {
     needsRedraw = true;
 };
 
-/**
- * Tính toán kích thước của ảnh người dùng sau khi đã áp dụng tỷ lệ zoom.
- * @returns {object} Chứa scaledWidth và scaledHeight.
- */
 const getScaledDimensions = () => {
     if (!userImage) return { scaledWidth: 0, scaledHeight: 0 };
     const circleDiameter = userImageCircle.radius * 2;
     const userImageAspectRatio = userImage.width / userImage.height;
     let baseWidth, baseHeight;
-    if (userImageAspectRatio > 1) { // Ảnh ngang
+    if (userImageAspectRatio > 1) { 
         baseHeight = circleDiameter;
         baseWidth = baseHeight * userImageAspectRatio;
-    } else { // Ảnh dọc hoặc vuông
+    } else {
         baseWidth = circleDiameter;
         baseHeight = baseWidth / userImageAspectRatio;
     }
@@ -102,9 +158,6 @@ const getScaledDimensions = () => {
     };
 };
 
-/**
- * Cập nhật trạng thái (bật/tắt) và dải giá trị (min/max) của các thanh trượt vị trí.
- */
 const updateSliders = () => {
     if (!userImage) { 
         xSlider.disabled = true; 
@@ -124,9 +177,6 @@ const updateSliders = () => {
     ySlider.value = imageY; 
 };
 
-/**
- * Đặt lại vị trí và độ phóng to của ảnh về giá trị mặc định.
- */
 const resetImageState = () => {
     imageScale = 1; 
     imageX = 0; 
@@ -135,36 +185,29 @@ const resetImageState = () => {
     updateSliders();
 };
 
-// --- CÁC HÀM XỬ LÝ LỊCH SỬ ---
-
-const saveAvatarToHistory = (dataURL) => {
-    let history = JSON.parse(localStorage.getItem(HISTORY_KEY)) || [];
-    history.unshift(dataURL);
-    if (history.length > MAX_HISTORY_ITEMS) {
-        history = history.slice(0, MAX_HISTORY_ITEMS);
-    }
-    try {
-        localStorage.setItem(HISTORY_KEY, JSON.stringify(history));
-    } catch (e) {
-        console.error("Lỗi khi lưu vào localStorage (có thể đã đầy):", e);
-        alert("Không thể lưu vào lịch sử, bộ nhớ có thể đã đầy.");
-    }
-};
-
-const renderHistory = () => {
-    const history = JSON.parse(localStorage.getItem(HISTORY_KEY)) || [];
+// VỊ TRÍ SỬA: Hàm renderHistory được cập nhật để dùng IndexedDB
+// MỤC ĐÍCH: Lấy dữ liệu từ DB và hiển thị, bao gồm cả việc gắn sự kiện xem ảnh gốc.
+async function renderHistory() {
+    const history = await db.getAvatars();
     historyGrid.innerHTML = '';
     if (history.length === 0) {
         noHistoryMessage.style.display = 'block';
     } else {
         noHistoryMessage.style.display = 'none';
-        history.forEach((dataURL, index) => {
+        history.forEach((avatar, index) => {
             const historyItem = document.createElement('div');
             historyItem.className = 'history-item';
             const img = document.createElement('img');
-            img.src = dataURL;
+            img.src = avatar.thumbnailData; // Luôn hiển thị thumbnail trên lưới
+            img.alt = `Avatar đã lưu lần ${index + 1}`;
+            
+            img.addEventListener('click', () => {
+                modalImage.src = avatar.highQualityData; // Khi click, hiển thị ảnh gốc
+                historyModal.style.display = 'flex';
+            });
+
             const downloadLink = document.createElement('a');
-            downloadLink.href = dataURL;
+            downloadLink.href = avatar.thumbnailData;
             downloadLink.download = `avatar-history-thumb-${index + 1}.png`;
             downloadLink.className = 'history-download-btn';
             downloadLink.textContent = 'Tải';
@@ -175,14 +218,12 @@ const renderHistory = () => {
     }
 };
 
-// VỊ TRÍ SỬA: Thêm hàm mới để điều chỉnh kích thước slider
-// MỤC ĐÍCH: Sửa lỗi hiển thị thanh trượt dọc bằng cách đặt chiều dài của nó bằng chiều cao của canvas.
 const adjustVerticalSliderSize = () => {
     const canvasHeight = canvas.clientHeight;
     ySlider.style.width = `${canvasHeight}px`;
 };
 
-// --- GẮN CÁC SỰ KIỆN VÀO CÁC PHẦN TỬ GIAO DIỆN ---
+// --- GẮN CÁC SỰ KIỆN ---
 
 imageLoader.addEventListener('change', (e) => {
     const file = e.target.files[0];
@@ -233,7 +274,9 @@ ySlider.addEventListener('input', () => {
     requestRedraw();
 });
 
-mainDownloadButton.addEventListener('click', () => {
+// VỊ TRÍ SỬA: Cập nhật sự kiện click của nút download để dùng IndexedDB
+// MỤC ĐÍCH: Lưu cả ảnh thumbnail và ảnh gốc vào cơ sở dữ liệu.
+mainDownloadButton.addEventListener('click', async () => {
     if (!userImage) {
         alert("Vui lòng chọn một ảnh trước khi tải xuống!");
         return; 
@@ -248,8 +291,12 @@ mainDownloadButton.addEventListener('click', () => {
     thumbCtx.drawImage(canvas, 0, 0, THUMBNAIL_SIZE, THUMBNAIL_SIZE);
     const thumbnailDataURL = thumbCanvas.toDataURL('image/png');
 
-    saveAvatarToHistory(thumbnailDataURL);
-    renderHistory();
+    await db.saveAvatar({
+        thumbnailData: thumbnailDataURL,
+        highQualityData: highQualityDataURL
+    });
+
+    await renderHistory();
     
     const link = document.createElement('a');
     link.href = highQualityDataURL;
@@ -259,20 +306,30 @@ mainDownloadButton.addEventListener('click', () => {
     document.body.removeChild(link);
 });
 
-// VỊ TRÍ SỬA: Thêm Event Listener cho sự kiện resize
-// MỤC ĐÍCH: Đảm bảo thanh trượt dọc luôn được cập nhật kích thước khi cửa sổ thay đổi.
 window.addEventListener('resize', adjustVerticalSliderSize);
 
-// Chạy lần đầu khi trang và các ảnh mặc định đã tải xong
+const closeModal = () => {
+    historyModal.style.display = 'none';
+};
+
+closeModalButton.addEventListener('click', closeModal);
+
+historyModal.addEventListener('click', (e) => {
+    if (e.target === historyModal) {
+        closeModal();
+    }
+});
+
+
+// --- KHỞI CHẠY ỨNG DỤNG ---
 Promise.all([
     new Promise(resolve => backgroundImage.onload = resolve),
     new Promise(resolve => frameImage.onload = resolve)
-]).then(() => {
+]).then(async () => { // Chuyển sang async
+    await db.init(); // Khởi tạo DB trước
     updateSliders();
     requestRedraw(); 
-    renderHistory();
-    // VỊ TRÍ SỬA: Gọi hàm để đặt kích thước ban đầu cho thanh trượt
-    // MỤC ĐÍCH: Thiết lập kích thước đúng cho thanh trượt ngay khi trang tải xong.
+    await renderHistory(); // Sau đó render lịch sử
     adjustVerticalSliderSize();
     updateLoop(); 
 });
